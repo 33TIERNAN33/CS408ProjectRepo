@@ -4,7 +4,7 @@ set -e
 
 APP_DIR="$(cd "$(dirname "$0")" && pwd)"
 SERVICE_NAME="resourcehub"
-APP_MODULE="app:app"
+APP_MODULE="mysite.wsgi:application"
 PORT=8000
 BRANCH="$(git -C "$APP_DIR" rev-parse --abbrev-ref HEAD)"
 
@@ -25,8 +25,9 @@ sudo apt update
 echo "Installing required packages if missing..."
 sudo apt install -y python3 python3-venv python3-pip git nginx
 
-echo "Pulling latest code from existing repository..."
-git -C "$APP_DIR" pull
+echo "Updating existing repository..."
+git -C "$APP_DIR" fetch origin
+git -C "$APP_DIR" reset --hard "origin/$BRANCH"
 
 cd "$APP_DIR"
 
@@ -47,17 +48,12 @@ else
     echo "No requirements.txt found, skipping dependency install."
 fi
 
-if [ -f init_db.py ]; then
-    echo "Running database initialization..."
-    python init_db.py
-else
-    echo "No init_db.py found, skipping database initialization."
-fi
+echo "Applying Django migrations..."
+python manage.py migrate
 
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 
 echo "Writing systemd service file..."
-
 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=$SERVICE_NAME Gunicorn Service
@@ -69,13 +65,19 @@ WorkingDirectory=$APP_DIR
 Environment="PATH=$APP_DIR/venv/bin"
 ExecStart=$APP_DIR/venv/bin/gunicorn --workers 3 --bind 127.0.0.1:$PORT $APP_MODULE
 Restart=always
+KillMode=mixed
 
 [Install]
 WantedBy=multi-user.target
 EOF
 
+echo "Reloading systemd..."
 sudo systemctl daemon-reload
 sudo systemctl enable $SERVICE_NAME
+
+echo "Stopping any stray gunicorn processes using this repo or port..."
+pkill -f "$APP_DIR/venv/bin/gunicorn" || true
+pkill -f "gunicorn.*127.0.0.1:$PORT" || true
 
 echo "Restarting application service..."
 sudo systemctl restart $SERVICE_NAME
@@ -83,6 +85,9 @@ sudo systemctl restart $SERVICE_NAME
 echo "Restarting nginx..."
 sudo systemctl restart nginx
 
+echo "====================================="
+echo "Active gunicorn processes:"
+ps aux | grep gunicorn | grep -v grep || true
 echo "====================================="
 echo "Setup complete."
 sudo systemctl --no-pager status $SERVICE_NAME || true
