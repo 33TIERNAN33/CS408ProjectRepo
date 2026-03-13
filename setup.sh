@@ -56,10 +56,9 @@ fi
 
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 
-if [ ! -f "$SERVICE_FILE" ]; then
-    echo "Creating systemd service..."
+echo "Writing systemd service file..."
 
-    sudo tee "$SERVICE_FILE" > /dev/null <<EOF
+sudo tee "$SERVICE_FILE" > /dev/null <<EOF
 [Unit]
 Description=$SERVICE_NAME Gunicorn Service
 After=network.target
@@ -75,11 +74,8 @@ Restart=always
 WantedBy=multi-user.target
 EOF
 
-    sudo systemctl daemon-reload
-    sudo systemctl enable $SERVICE_NAME
-else
-    echo "Systemd service already exists, leaving it as-is."
-fi
+sudo systemctl daemon-reload
+sudo systemctl enable $SERVICE_NAME
 
 echo "Restarting application service..."
 sudo systemctl restart $SERVICE_NAME
