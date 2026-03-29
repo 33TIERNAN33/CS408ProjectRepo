@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 
-set -e
+set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
 DJANGO_DIR="$REPO_DIR/mysite"
@@ -8,13 +8,26 @@ VENV_DIR="$REPO_DIR/venv"
 SERVICE_NAME="resourcehub"
 APP_MODULE="mysite.wsgi:application"
 PORT=8000
+REQUIREMENTS_FILE="$DJANGO_DIR/requirements.txt"
+RUN_USER="${SUDO_USER:-$USER}"
 BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
+SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+NGINX_SITE="/etc/nginx/sites-available/$SERVICE_NAME"
+
+cleanup_on_error() {
+    echo "Setup failed. Showing recent service logs for debugging..."
+    sudo systemctl --no-pager status "$SERVICE_NAME" || true
+    sudo journalctl -u "$SERVICE_NAME" -n 50 --no-pager || true
+}
+
+trap cleanup_on_error ERR
 
 echo "====================================="
 echo "Starting Django server setup/update"
 echo "Repo directory:   $REPO_DIR"
 echo "Django directory: $DJANGO_DIR"
 echo "Branch:           $BRANCH"
+echo "Run user:         $RUN_USER"
 echo "====================================="
 
 if [ ! -d "$REPO_DIR/.git" ]; then
@@ -27,38 +40,50 @@ if [ ! -f "$DJANGO_DIR/manage.py" ]; then
     exit 1
 fi
 
+if [ "$BRANCH" = "HEAD" ]; then
+    echo "Error: repository is in a detached HEAD state. Check out a branch before running setup.sh."
+    exit 1
+fi
+
 echo "Updating package list..."
 sudo apt update
 
 echo "Installing required system packages..."
 sudo apt install -y python3 python3-venv python3-pip git nginx
 
-echo "Updating repository from GitHub..."
-git -C "$REPO_DIR" fetch origin
-git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
+echo "Stopping existing application service..."
+sudo systemctl stop "$SERVICE_NAME" || true
 
-echo "Setting up virtual environment..."
-if [ ! -d "$VENV_DIR" ]; then
-    python3 -m venv "$VENV_DIR"
-fi
+echo "Stopping stray gunicorn processes..."
+sudo pkill -f "$VENV_DIR/bin/gunicorn" || true
+sudo pkill -f "gunicorn.*127.0.0.1:$PORT" || true
+
+echo "Updating repository from GitHub..."
+git -C "$REPO_DIR" fetch --prune origin
+git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
+git -C "$REPO_DIR" clean -fd --exclude venv --exclude .env --exclude .env.*
+
+echo "Rebuilding virtual environment..."
+rm -rf "$VENV_DIR"
+python3 -m venv "$VENV_DIR"
 
 source "$VENV_DIR/bin/activate"
 
 echo "Upgrading pip..."
-pip install --upgrade pip
+python -m pip install --upgrade pip
 
-if [ -f "$REPO_DIR/requirements.txt" ]; then
+if [ -f "$REQUIREMENTS_FILE" ]; then
     echo "Installing Python dependencies..."
-    pip install -r "$REPO_DIR/requirements.txt"
+    python -m pip install -r "$REQUIREMENTS_FILE"
 else
-    echo "No requirements.txt found, skipping dependency install."
+    echo "Error: No requirements.txt found at $REQUIREMENTS_FILE"
+    exit 1
 fi
 
 echo "Applying Django migrations..."
 cd "$DJANGO_DIR"
 python manage.py migrate
-
-SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
+python manage.py check
 
 echo "Writing systemd service file..."
 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
@@ -67,11 +92,13 @@ Description=$SERVICE_NAME Gunicorn Service
 After=network.target
 
 [Service]
-User=$USER
+User=$RUN_USER
+Group=www-data
 WorkingDirectory=$DJANGO_DIR
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind 127.0.0.1:$PORT $APP_MODULE
 Restart=always
+RestartSec=5
 KillMode=mixed
 
 [Install]
@@ -79,7 +106,6 @@ WantedBy=multi-user.target
 EOF
 
 echo "Writing nginx site config..."
-NGINX_SITE="/etc/nginx/sites-available/$SERVICE_NAME"
 sudo tee "$NGINX_SITE" > /dev/null <<EOF
 server {
     listen 80;
@@ -104,10 +130,6 @@ sudo nginx -t
 echo "Reloading systemd..."
 sudo systemctl daemon-reload
 sudo systemctl enable "$SERVICE_NAME"
-
-echo "Stopping stray gunicorn processes..."
-pkill -f "$VENV_DIR/bin/gunicorn" || true
-pkill -f "gunicorn.*127.0.0.1:$PORT" || true
 
 echo "Restarting services..."
 sudo systemctl restart "$SERVICE_NAME"

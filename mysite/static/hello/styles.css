@@ -1,13 +1,20 @@
-/* page background */
-
-.bg-soft-green {
-    background-color: #e8f5e9;
+:root {
+    --caretrack-bg: #e8f5e9;
+    --caretrack-surface: #f1f8f4;
+    --caretrack-border: #c8e6c9;
+    --caretrack-primary: #4caf50;
+    --caretrack-footer: #c8e6c9;
 }
 
-/* navbar */
+.site-shell {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    background-color: var(--caretrack-bg);
+}
 
 .navbar-green {
-    background-color: #4caf50;
+    background-color: var(--caretrack-primary);
 }
 
 .navbar-green .nav-link,
@@ -15,14 +22,10 @@
     color: white !important;
 }
 
-/* hero section */
-
 .hero-box {
-    background-color: #f1f8f4;
-    border: 1px solid #c8e6c9;
+    background-color: var(--caretrack-surface);
+    border: 1px solid var(--caretrack-border);
 }
-
-/* feature cards */
 
 .feature-card {
     border: 1px solid #dcedc8;
@@ -33,8 +36,13 @@
     transition: 0.2s;
 }
 
-/* footer */
-
 .footer-green {
-    background-color: #c8e6c9;
+    background-color: var(--caretrack-footer);
+}
+
+.page-panel {
+    background-color: var(--caretrack-surface);
+    border: 1px solid var(--caretrack-border);
+    border-radius: 1rem;
+    padding: 3rem;
 }
