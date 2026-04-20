@@ -1,0 +1,76 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <div id="content-main" class="caretrack-admin-home">
+    <section class="admin-welcome">
+      <h1>Manage CareTrack records</h1>
+      <p>
+        Choose the area you need, then use the action buttons to add or update records.
+      </p>
+    </section>
+
+    {% if app_list %}
+      <div class="admin-card-grid">
+        {% for app in app_list %}
+          <section class="admin-app-card app-{{ app.app_label }}">
+            <div class="admin-app-card-header">
+              <h2>{{ app.name }}</h2>
+              {% if app.app_url %}
+                <a class="admin-action admin-action-secondary" href="{{ app.app_url }}">View all</a>
+              {% endif %}
+            </div>
+
+            <div class="admin-model-list">
+              {% for model in app.models %}
+                <div class="admin-model-row model-{{ model.object_name|lower }}">
+                  <div>
+                    {% if model.admin_url %}
+                      <a class="admin-model-name" href="{{ model.admin_url }}">{{ model.name }}</a>
+                    {% else %}
+                      <span class="admin-model-name">{{ model.name }}</span>
+                    {% endif %}
+                    <p class="admin-model-note">
+                      {% if model.object_name == "Item" %}
+                        Inventory, storage status, donor, and survivor assignment.
+                      {% elif model.object_name == "Donor" %}
+                        Donation source and contact records.
+                      {% elif model.object_name == "Survivor" %}
+                        Survivor contact records and assigned resources.
+                      {% elif model.object_name == "UserProfile" %}
+                        Role assignments and staff approval status.
+                      {% elif model.object_name == "ItemRequest" %}
+                        Pending, approved, and denied resource requests.
+                      {% elif model.object_name == "User" %}
+                        User accounts, staff access, and authentication settings.
+                      {% elif model.object_name == "Group" %}
+                        Permission groups for staff accounts.
+                      {% else %}
+                        Review and update records.
+                      {% endif %}
+                    </p>
+                  </div>
+
+                  <div class="admin-model-actions">
+                    {% if model.admin_url %}
+                      <a href="{{ model.admin_url }}" class="admin-action admin-action-primary">
+                        {% if model.view_only %}{% translate "View" %}{% else %}{% translate "Open" %}{% endif %}
+                      </a>
+                    {% endif %}
+                    {% if model.add_url %}
+                      <a href="{{ model.add_url }}" class="admin-action admin-action-secondary">{% translate "Add" %}</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>{% translate "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block sidebar %}{% endblock %}

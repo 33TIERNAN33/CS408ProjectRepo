@@ -1,0 +1,49 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+  <div id="content-main" class="caretrack-admin-home">
+    <section class="admin-welcome">
+      <h1>{{ app_label|capfirst }}</h1>
+      <p>Choose a record type below, then use the action buttons to add or update entries.</p>
+    </section>
+
+    {% if app_list %}
+      <div class="admin-card-grid">
+        {% for app in app_list %}
+          <section class="admin-app-card app-{{ app.app_label }}">
+            <div class="admin-model-list">
+              {% for model in app.models %}
+                <div class="admin-model-row model-{{ model.object_name|lower }}">
+                  <div>
+                    {% if model.admin_url %}
+                      <a class="admin-model-name" href="{{ model.admin_url }}">{{ model.name }}</a>
+                    {% else %}
+                      <span class="admin-model-name">{{ model.name }}</span>
+                    {% endif %}
+                    <p class="admin-model-note">Review and update records.</p>
+                  </div>
+
+                  <div class="admin-model-actions">
+                    {% if model.admin_url %}
+                      <a href="{{ model.admin_url }}" class="admin-action admin-action-primary">
+                        {% if model.view_only %}{% translate "View" %}{% else %}{% translate "Open" %}{% endif %}
+                      </a>
+                    {% endif %}
+                    {% if model.add_url %}
+                      <a href="{{ model.add_url }}" class="admin-action admin-action-secondary">{% translate "Add" %}</a>
+                    {% endif %}
+                  </div>
+                </div>
+              {% endfor %}
+            </div>
+          </section>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p>{% translate "You don't have permission to view or edit anything." %}</p>
+    {% endif %}
+  </div>
+{% endblock %}
+
+{% block sidebar %}{% endblock %}

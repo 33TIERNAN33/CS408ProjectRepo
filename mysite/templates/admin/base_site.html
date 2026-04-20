@@ -1,0 +1,35 @@
+{% extends "admin/base.html" %}
+{% load static %}
+
+{% block title %}{% if subtitle %}{{ subtitle }} | {% endif %}{{ title }} | CareTrack Admin{% endblock %}
+
+{% block dark-mode-vars %}{% endblock %}
+
+{% block branding %}
+  <div id="site-name">
+    <a href="{% url 'admin:index' %}">CareTrack Admin</a>
+    <span class="admin-brand-subtitle">Donation inventory operations</span>
+  </div>
+{% endblock %}
+
+{% block userlinks %}
+  {% if site_url %}
+    <a class="admin-header-link" href="{{ site_url }}">View site</a>
+  {% endif %}
+  {% if user.has_usable_password %}
+    <a class="admin-header-link" href="{% url 'admin:password_change' %}">Change password</a>
+  {% endif %}
+  <form id="logout-form" method="post" action="{% url 'admin:logout' %}">
+    {% csrf_token %}
+    <button class="admin-header-link admin-header-button" type="submit">Log out</button>
+  </form>
+{% endblock %}
+
+{% block nav-global %}
+  <a class="admin-public-link" href="{% url 'home' %}">Back to CareTrack</a>
+{% endblock %}
+
+{% block extrastyle %}
+  {{ block.super }}
+  <link rel="stylesheet" href="{% static 'hello/admin.css' %}">
+{% endblock %}
