@@ -1,5 +1,6 @@
 import os
 import shutil
+from pathlib import Path
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
@@ -296,6 +297,32 @@ class CheckpointFiveFeatureTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertFormError(response.context["form"], "image_path", "Only JPEG and PNG images can be uploaded.")
         self.assertFalse(Item.objects.filter(name="Invalid Image Item").exists())
+
+
+class CheckpointSixDeploymentTests(TestCase):
+    def setUp(self):
+        self.repo_dir = Path(settings.BASE_DIR).parent
+        self.setup_script = (self.repo_dir / "setup.sh").read_text()
+
+    def test_setup_script_collects_static_and_serves_static_and_media(self):
+        self.assertIn("python manage.py collectstatic --noinput", self.setup_script)
+        self.assertIn("location /static/", self.setup_script)
+        self.assertIn("alias $DJANGO_DIR/staticfiles/;", self.setup_script)
+        self.assertIn("location /media/", self.setup_script)
+        self.assertIn("alias $DJANGO_DIR/media/;", self.setup_script)
+
+    def test_setup_script_uses_environment_file_for_production_settings(self):
+        self.assertIn("ENV_FILE=\"$DJANGO_DIR/.env\"", self.setup_script)
+        self.assertIn("DJANGO_SECRET_KEY=", self.setup_script)
+        self.assertIn("DJANGO_DEBUG=False", self.setup_script)
+        self.assertIn("EnvironmentFile=$ENV_FILE", self.setup_script)
+
+    def test_setup_script_checks_gunicorn_and_nginx_health(self):
+        self.assertIn("curl -fsS --max-time 10 \"http://127.0.0.1:$PORT/\"", self.setup_script)
+        self.assertIn("curl -fsS --max-time 10 \"http://127.0.0.1/\"", self.setup_script)
+
+    def test_static_root_is_configured_for_collectstatic(self):
+        self.assertEqual(settings.STATIC_ROOT, settings.BASE_DIR / "staticfiles")
 
 
 class AdminPageTests(TestCase):

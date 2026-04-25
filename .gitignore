@@ -8,10 +8,12 @@ __pycache__/
 # Django database
 db.sqlite3
 mysite/media/
+mysite/staticfiles/
 mysite/logs/*.log
 
 # Environment variables / secrets
 .env
+mysite/.env
 
 # VS Code settings (optional)
 .vscode/

@@ -13,8 +13,10 @@ RUN_USER="${SUDO_USER:-$USER}"
 BRANCH="$(git -C "$REPO_DIR" rev-parse --abbrev-ref HEAD)"
 SERVICE_FILE="/etc/systemd/system/$SERVICE_NAME.service"
 NGINX_SITE="/etc/nginx/sites-available/$SERVICE_NAME"
+ENV_FILE="$DJANGO_DIR/.env"
 SNAPSHOT_DIR="$REPO_DIR/data_snapshots"
 SNAPSHOT_FILE="$SNAPSHOT_DIR/snapshot_$(date +%Y%m%d_%H%M%S).json"
+PUBLIC_HOST="${PUBLIC_HOST:-}"
 
 cleanup_on_error() {
     echo "Setup failed. Showing recent service logs for debugging..."
@@ -51,7 +53,7 @@ echo "Updating package list..."
 sudo apt update
 
 echo "Installing required system packages..."
-sudo apt install -y python3 python3-venv python3-pip git nginx
+sudo apt install -y python3 python3-venv python3-pip git nginx curl
 
 echo "Stopping existing application service..."
 sudo systemctl stop "$SERVICE_NAME" || true
@@ -87,7 +89,7 @@ fi
 echo "Updating repository from GitHub..."
 git -C "$REPO_DIR" fetch --prune origin
 git -C "$REPO_DIR" reset --hard "origin/$BRANCH"
-git -C "$REPO_DIR" clean -fd --exclude venv --exclude .env --exclude .env.* --exclude data_snapshots --exclude 'data_snapshots/**' --exclude mysite/media --exclude 'mysite/media/**'
+git -C "$REPO_DIR" clean -fd --exclude venv --exclude .env --exclude .env.* --exclude mysite/.env --exclude data_snapshots --exclude 'data_snapshots/**' --exclude mysite/media --exclude 'mysite/media/**'
 chmod +x "$REPO_DIR/setup.sh"
 
 echo "Rebuilding virtual environment..."
@@ -126,6 +128,29 @@ fi
 shopt -u nullglob
 
 python manage.py check
+python manage.py collectstatic --noinput
+
+if [ -n "$PUBLIC_HOST" ]; then
+    DJANGO_ALLOWED_HOSTS_VALUE="localhost,127.0.0.1,$PUBLIC_HOST"
+    DJANGO_CSRF_TRUSTED_ORIGINS_VALUE="http://$PUBLIC_HOST"
+else
+    DJANGO_ALLOWED_HOSTS_VALUE="*"
+    DJANGO_CSRF_TRUSTED_ORIGINS_VALUE=""
+fi
+
+if [ ! -f "$ENV_FILE" ]; then
+    echo "Creating Django production environment file..."
+    GENERATED_SECRET="$(python -c 'from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())')"
+    cat > "$ENV_FILE" <<EOF
+DJANGO_SECRET_KEY='$GENERATED_SECRET'
+DJANGO_DEBUG=False
+DJANGO_ALLOWED_HOSTS='$DJANGO_ALLOWED_HOSTS_VALUE'
+DJANGO_CSRF_TRUSTED_ORIGINS='$DJANGO_CSRF_TRUSTED_ORIGINS_VALUE'
+EOF
+else
+    echo "Using existing Django environment file at $ENV_FILE"
+fi
+chmod 600 "$ENV_FILE"
 
 echo "Writing systemd service file..."
 sudo tee "$SERVICE_FILE" > /dev/null <<EOF
@@ -137,6 +162,7 @@ After=network.target
 User=$RUN_USER
 Group=www-data
 WorkingDirectory=$DJANGO_DIR
+EnvironmentFile=$ENV_FILE
 Environment="PATH=$VENV_DIR/bin"
 ExecStart=$VENV_DIR/bin/gunicorn --workers 3 --bind 127.0.0.1:$PORT $APP_MODULE
 Restart=always
@@ -161,6 +187,10 @@ server {
         proxy_set_header X-Forwarded-Proto \$scheme;
     }
 
+    location /static/ {
+        alias $DJANGO_DIR/staticfiles/;
+    }
+
     location /media/ {
         alias $DJANGO_DIR/media/;
     }
@@ -180,6 +210,10 @@ sudo systemctl enable "$SERVICE_NAME"
 echo "Restarting services..."
 sudo systemctl restart "$SERVICE_NAME"
 sudo systemctl restart nginx
+
+echo "Checking local application health..."
+curl -fsS --max-time 10 "http://127.0.0.1:$PORT/" > /dev/null
+curl -fsS --max-time 10 "http://127.0.0.1/" > /dev/null
 
 echo "====================================="
 echo "resourcehub service status:"
